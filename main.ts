@@ -1,35 +1,41 @@
-// news-image-20261120 entry (Node 22, standard library only).
-// The image beside this file, entry.png, sums up the world's news of
-// Friday 20 November 2026. This program copies it to /output/entry.png.
-// It runs with no network and writes the same bytes on every run.
-//
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// news-image-20261120: copy the finished front page into the grading folder.
+// Node 22, standard library only. No drawing, no randomness — the two
+// grading runs must produce byte-identical output, so this just copies.
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const src = new URL('./entry.png', import.meta.url);
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-const dest = join(outDir, 'entry.png');
+const FOLDER = dirname(fileURLToPath(import.meta.url));
+const SRC = join(FOLDER, 'entry.png');
+const OUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const OUT = join(OUT_DIR, 'entry.png');
 
-if (!existsSync(src)) {
-  throw new Error('entry.png is missing next to main.ts');
+if (!existsSync(SRC)) {
+  throw new Error('missing entry.png beside main.ts: ' + SRC);
 }
-const bytes = readFileSync(src);
-if (bytes.length === 0 || bytes.length > 1048576) {
-  throw new Error(`entry.png has an unexpected size: ${bytes.length} bytes`);
+
+const bytes = readFileSync(SRC);
+
+// A real PNG starts with these eight bytes. Anything else is not our picture.
+const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const looksPng = SIGNATURE.every((b, i) => bytes[i] === b);
+if (!looksPng) {
+  throw new Error('entry.png has wrong magic bytes, not a PNG');
 }
-// PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A. Refuse anything that is not a PNG.
-const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-if (!bytes.subarray(0, 8).equals(pngMagic)) {
-  throw new Error('entry.png is not a PNG file (bad magic bytes)');
+
+const LIMIT = 1024 * 1024;
+if (bytes.length > LIMIT) {
+  throw new Error('entry.png is ' + bytes.length + ' bytes, over the 1 MiB cap');
 }
-mkdirSync(outDir, { recursive: true });
-writeFileSync(dest, bytes);
-// Verify the copy: the file we wrote must match the source byte for byte.
-const written = readFileSync(dest);
-if (!written.equals(bytes)) {
-  throw new Error('the copied entry.png does not match the source');
+
+mkdirSync(OUT_DIR, { recursive: true });
+writeFileSync(OUT, bytes);
+
+// Read it back and compare, so a short or garbled write fails out loud.
+const again = readFileSync(OUT);
+if (!again.equals(bytes)) {
+  throw new Error('read-back differs from entry.png, copy failed');
 }
-console.log(`wrote ${dest} (${bytes.length} bytes)`);
+
+console.log('wrote ' + OUT + ' (' + again.length + ' bytes)');
